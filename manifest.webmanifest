@@ -1,0 +1,25 @@
+{
+  "name": "Controle de Alunos Entrada e Pátio",
+  "short_name": "Entrada e Pátio",
+  "description": "Controle de atrasos e saídas antecipadas de alunos, com alerta de reincidência e envio de aviso por WhatsApp.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#eef2f6",
+  "theme_color": "#176b87",
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

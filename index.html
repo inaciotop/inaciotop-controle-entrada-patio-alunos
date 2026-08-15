@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle de Alunos Entrada e Pátio</title>
+
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="theme-color" content="#176b87">
+    <link rel="icon" href="icon-192.png" type="image/png">
+    <link rel="apple-touch-icon" href="icon-192.png">
+
+    <style>
+        :root {
+            --primary: #176b87;
+            --bg: #eef2f6;
+            --card: #ffffff;
+            --text: #333333;
+        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        header { text-align: center; margin-bottom: 25px; }
+        h1 { color: var(--primary); margin-bottom: 5px; }
+        .card { background: var(--card); padding: 25px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 6px; font-weight: 600; }
+        input, select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
+        button { width: 100%; padding: 12px; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .btn-salvar { background-color: var(--primary); color: white; }
+        .btn-exportar { background-color: #2b3a42; color: white; }
+        .btn-whatsapp { background-color: #25D366; color: white; padding: 6px 10px; border-radius: 4px; font-size: 13px; font-weight: bold; text-decoration: none; display: inline-block; text-align: center; }
+        .badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+        .badge-atraso { background: #ffeaa7; color: #d63031; }
+        .badge-saida { background: #ff7675; color: white; }
+        .badge-ocorrencia { background: #a29bfe; color: white; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; font-size: 14px; }
+        th { background-color: #f1f1f1; }
+
+        .busca-container { margin-top: 15px; margin-bottom: 5px; }
+        .input-busca { width: 100%; padding: 10px; border: 2px solid var(--primary); border-radius: 6px; font-size: 15px; }
+        .alerta-reincidente { background-color: #ffeaa7; color: #b71515; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-weight: bold; display: none; border-left: 5px solid #d63031; }
+
+        .status-offline { display:none; background:#d63031; color:#fff; text-align:center; padding:6px; border-radius:6px; margin-bottom:15px; font-size:13px; font-weight:bold; }
+        .banner-atualizacao { display:none; align-items:center; justify-content:space-between; gap:10px; background:#176b87; color:#fff; padding:10px 14px; border-radius:6px; margin-bottom:15px; font-size:13px; font-weight:bold; }
+        .banner-atualizacao button { width:auto; margin:0; padding:6px 12px; background:#fff; color:#176b87; font-size:13px; border-radius:5px; }
+        .status-sincronizacao { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:12px; color:#176b87; margin-bottom:15px; }
+        .status-sincronizacao button { width:auto; margin:0; padding:4px 10px; font-size:12px; background:#eef2f6; color:#176b87; border:1px solid #176b87; }
+
+        /* Tela de login */
+        #tela-login { max-width: 380px; margin: 60px auto; }
+        #tela-login h1 { font-size: 22px; text-align:center; }
+        #tela-login .card { text-align:left; }
+        #erro-login { display:none; background:#ffeaea; color:#c0392b; padding:10px; border-radius:6px; margin-bottom:15px; font-size:13px; font-weight:bold; }
+        .btn-login { background-color: var(--primary); color:#fff; }
+        .barra-usuario { display:flex; align-items:center; justify-content:space-between; gap:10px; background:#2b3a42; color:#fff; padding:8px 14px; border-radius:6px; margin-bottom:15px; font-size:13px; }
+        .barra-usuario button { width:auto; margin:0; padding:5px 10px; font-size:12px; background:#eef2f6; color:#2b3a42; border:none; border-radius:5px; }
+        #app-principal { display:none; }
+    </style>
+</head>
+<body>
+    <!-- TELA DE LOGIN -->
+    <div id="tela-login" class="container">
+        <header>
+            <h1>Controle de Alunos Entrada e Pátio</h1>
+            <p>Faça login para continuar</p>
+        </header>
+        <div class="card">
+            <div id="erro-login"></div>
+            <form id="form-login" onsubmit="event.preventDefault(); fazerLogin();">
+                <div class="form-group">
+                    <label for="login_email">E-mail:</label>
+                    <input type="email" id="login_email" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="login_senha">Senha:</label>
+                    <input type="password" id="login_senha" required autocomplete="current-password">
+                </div>
+                <button type="submit" class="btn-login">Entrar</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- APP PRINCIPAL (só aparece logado) -->
+    <div id="app-principal" class="container">
+        <header>
+            <h1>Controle de Alunos Entrada e Pátio</h1>
+            <p>Atrasos e Saídas Antecipadas</p>
+        </header>
+
+        <div id="banner-atualizacao" class="banner-atualizacao">
+            <span>🔄 Nova versão do app disponível!</span>
+            <button>Atualizar agora</button>
+        </div>
+
+        <div class="barra-usuario">
+            <span id="texto-usuario-logado">👤 ...</span>
+            <button onclick="fazerLogout()">Sair</button>
+        </div>
+
+        <div id="status-sincronizacao" class="status-sincronizacao">
+            <span>🟢 Lista em tempo real — <span id="texto-ultima-sync">sincronizando...</span></span>
+        </div>
+
+        <div id="status-offline" class="status-offline">📴 Você está offline — os dados continuam sendo salvos neste aparelho e sincronizam quando a conexão voltar.</div>
+
+        <div class="card">
+            <div id="alerta-reincidencia" class="alerta-reincidente">⚠️ Aluno reincidente! Já possui atrasos registrados.</div>
+
+            <form id="form-registro" onsubmit="event.preventDefault(); salvarOcorrencia();">
+                <div class="form-group">
+                    <label for="tipo_registro">Tipo de Ocorrência:</label>
+                    <select id="tipo_registro" onchange="alternarCamposPorTipo()">
+                        <option value="ATRASO">Atraso (Entrada)</option>
+                        <option value="SAÍDA">Saída Antecipada</option>
+                        <option value="OCORRENCIA">Ocorrência (Pátio/Corredor/Sala)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="aluno_nome">Nome do Aluno: <span style="color:red;">*</span></label>
+                    <input type="text" id="aluno_nome" oninput="verificarReincidencia()" required>
+                </div>
+                <div class="form-group">
+                    <label for="aluno_turma">Turma: <span style="color:red;">*</span></label>
+                    <input type="text" id="aluno_turma" oninput="verificarReincidencia()" required>
+                </div>
+                <div class="form-group">
+                    <label for="aluno_matricula">Matrícula (Opcional):</label>
+                    <input type="text" id="aluno_matricula">
+                </div>
+
+                <div class="form-group" id="grupo-telefone">
+                    <label for="responsavel_telefone" id="label-telefone">📱 WhatsApp do Responsável (Opcional):</label>
+                    <input type="tel" id="responsavel_telefone" placeholder="Ex: 11999999999">
+                </div>
+
+                <div id="campos_atraso">
+                    <div class="form-group">
+                        <label for="status_atraso">Status do Atraso:</label>
+                        <select id="status_atraso">
+                            <option value="Justificado">Justificado</option>
+                            <option value="Não justificado">Não justificado</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="justificativa_atraso">Motivo / Detalhe (Opcional):</label>
+                        <input type="text" id="justificativa_atraso" placeholder="Ex: pai trouxe, ônibus, trabalho...">
+                    </div>
+                </div>
+
+                <div id="campos_saida" style="display: none;">
+                    <div class="form-group">
+                        <label for="motivo_obs">Motivo da Saída / Observação (Opcional):</label>
+                        <input type="text" id="motivo_obs">
+                    </div>
+                    <div class="form-group">
+                        <label for="autorizado_por">Autorizado por (Opcional):</label>
+                        <input type="text" id="autorizado_por">
+                    </div>
+                </div>
+
+                <div id="campos_ocorrencia" style="display: none;">
+                    <div class="form-group">
+                        <label for="local_ocorrencia">Local: <span style="color:red;">*</span></label>
+                        <select id="local_ocorrencia">
+                            <option value="Pátio">Pátio</option>
+                            <option value="Corredor">Corredor</option>
+                            <option value="Sala">Sala</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="detalhe_ocorrencia">Descrição da Ocorrência (Opcional):</label>
+                        <input type="text" id="detalhe_ocorrencia" placeholder="Ex: briga, indisciplina, uso de celular...">
+                    </div>
+                    <div class="form-group">
+                        <label for="funcionario_ocorrencia">Quem Fez o Registro (Funcionário): <span style="color:red;">*</span></label>
+                        <input type="text" id="funcionario_ocorrencia" placeholder="Nome de quem flagrou/registrou a ocorrência">
+                    </div>
+                </div>
+                <button type="submit" class="btn-salvar">Salvar Registro</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>Registros de Hoje</h2>
+                <button class="btn-exportar" onclick="exportarParaCSV()" style="width: auto; margin: 0;">CSV</button>
+            </div>
+            <div style="display:flex; gap:8px; margin-top:10px;">
+                <button class="btn-exportar" onclick="exportarParaXLSX()" style="margin:0;">📊 Exportar XLSX</button>
+            </div>
+
+            <div class="busca-container">
+                <input type="text" id="campo-busca" class="input-busca" placeholder="🔍 Buscar por aluno, turma ou matrícula..." oninput="filtrarRegistros()">
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Data/Hora/Tipo</th>
+                        <th>Aluno</th>
+                        <th>Turma</th>
+                        <th>Ação</th>
+                    </tr>
+                </thead>
+                <tbody id="lista-ocorrencias"></tbody>
+            </table>
+        </div>
+    </div><!-- /#app-principal -->
+
+    <!-- Biblioteca para gerar arquivos .xlsx no navegador -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Firebase (Authentication + Firestore) -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
