@@ -557,8 +557,8 @@ function gerarPlanilhaXLSX() {
     return livro;
 }
 
-// Aba "Resumo por Aluno": 3 tabelas lado a lado —
-// 1) contagem por aluno+data+tipo · 2) total por aluno+tipo · 3) total geral por aluno (todos os tipos somados)
+// Aba "Resumo por Aluno": 2 tabelas lado a lado —
+// 1) contagem por aluno+data+tipo · 2) total geral por aluno (todos os tipos somados)
 function adicionarAbaResumoPorAluno(livro, historico) {
     const contagemPorDia = new Map();
     historico.forEach(reg => {
@@ -572,22 +572,10 @@ function adicionarAbaResumoPorAluno(livro, historico) {
         Aluno: item.nome, Turma: item.turma, Data: item.data, Tipo: item.tipo, Quantidade: item.quantidade
     }));
 
-    const totalPorTipo = new Map();
-    historico.forEach(reg => {
-        const chave = `${chaveDoAluno(reg)}||${reg.tipo}`;
-        if (!totalPorTipo.has(chave)) {
-            totalPorTipo.set(chave, { nome: paraMaiuscula(reg.aluno), turma: paraMaiuscula(reg.turma), tipo: reg.tipo, total: 0 });
-        }
-        totalPorTipo.get(chave).total++;
-    });
-    const tabelaTotalPorAluno = [...totalPorTipo.values()].map(item => ({
-        Aluno: item.nome, Turma: item.turma, Tipo: item.tipo, Total: item.total
-    }));
-
     // Total geral por aluno, somando TODOS os tipos (atraso + ocorrência + saída) —
     // responde direto "quantas vezes esse aluno apareceu no total, no ano letivo".
-    // Agrupa por matrícula (quando houver) ou nome completo+turma — nunca só pelo
-    // primeiro nome, para não misturar alunos diferentes com o mesmo nome.
+    // Agrupa por nome completo+turma (nunca só pelo primeiro nome, para não
+    // misturar alunos diferentes com o mesmo nome).
     const totalGeralPorAluno = new Map();
     historico.forEach(reg => {
         const chave = chaveDoAluno(reg);
@@ -602,11 +590,9 @@ function adicionarAbaResumoPorAluno(livro, historico) {
 
     const planilhaResumo = XLSX.utils.aoa_to_sheet([[]]);
     XLSX.utils.sheet_add_json(planilhaResumo, tabelaContagemDiaria, { origin: 'A1' });
-    XLSX.utils.sheet_add_json(planilhaResumo, tabelaTotalPorAluno, { origin: 'G1' });
-    XLSX.utils.sheet_add_json(planilhaResumo, tabelaTotalGeral, { origin: 'L1' });
+    XLSX.utils.sheet_add_json(planilhaResumo, tabelaTotalGeral, { origin: 'G1' });
     planilhaResumo['!cols'] = [
         { wch: 20 }, { wch: 8 }, { wch: 12 }, { wch: 14 }, { wch: 11 }, { wch: 3 },
-        { wch: 20 }, { wch: 8 }, { wch: 14 }, { wch: 8 }, { wch: 3 },
         { wch: 20 }, { wch: 8 }, { wch: 24 }
     ];
     XLSX.utils.book_append_sheet(livro, planilhaResumo, 'Resumo por Aluno');
