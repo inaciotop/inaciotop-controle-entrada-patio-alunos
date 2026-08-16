@@ -21,9 +21,12 @@ db.enablePersistence({ synchronizeTabs: true }).catch((erro) => {
 });
 
 const NOME_COLECAO_REGISTROS = 'registros';
+const NOME_COLECAO_USUARIOS = 'usuarios';
 
 let registrosCache = []; // fonte única usada por toda a interface
 let unsubscribeRegistros = null;
+let papelUsuarioAtual = 'lancador'; // 'lancador' (lança e lê), 'gestor' (lança, lê e edita) ou 'leitor' (só lê)
+let idRegistroEmEdicao = null; // usado quando um "gestor" está editando um registro existente
 
 function obterHistorico() {
     return registrosCache;
@@ -39,11 +42,13 @@ document.addEventListener('DOMContentLoaded', () => {
 // AUTENTICAÇÃO (Firebase Auth — e-mail e senha)
 // ================================================================
 function configurarAutenticacao() {
-    auth.onAuthStateChanged((usuario) => {
+    auth.onAuthStateChanged(async (usuario) => {
         if (usuario) {
             document.getElementById('tela-login').style.display = 'none';
             document.getElementById('app-principal').style.display = 'block';
             document.getElementById('texto-usuario-logado').innerText = `👤 ${usuario.email}`;
+            await carregarPapelUsuario(usuario.uid);
+            aplicarPermissoesNaTela();
             iniciarListenerRegistros();
         } else {
             document.getElementById('tela-login').style.display = 'block';
@@ -51,6 +56,35 @@ function configurarAutenticacao() {
             pararListenerRegistros();
         }
     });
+}
+
+async function carregarPapelUsuario(uid) {
+    try {
+        const doc = await db.collection(NOME_COLECAO_USUARIOS).doc(uid).get();
+        const papel = doc.exists ? doc.data().papel : null;
+        papelUsuarioAtual = (papel === 'gestor' || papel === 'leitor') ? papel : 'lancador';
+    } catch (erro) {
+        console.warn('Não foi possível verificar o papel do usuário, assumindo "lancador":', erro);
+        papelUsuarioAtual = 'lancador';
+    }
+}
+
+function aplicarPermissoesNaTela() {
+    const cardFormulario = document.getElementById('form-registro').closest('.card');
+    const avisoLeitor = document.getElementById('aviso-somente-leitura');
+
+    if (papelUsuarioAtual === 'leitor') {
+        if (cardFormulario) cardFormulario.style.display = 'none';
+        if (avisoLeitor) avisoLeitor.style.display = 'block';
+    } else {
+        if (cardFormulario) cardFormulario.style.display = 'block';
+        if (avisoLeitor) avisoLeitor.style.display = 'none';
+    }
+    atualizarTabelaTela(); // reexibe a lista já mostrando/escondendo o botão Editar
+}
+
+function podeEditarRegistros() {
+    return papelUsuarioAtual === 'gestor';
 }
 
 async function fazerLogin() {
@@ -293,12 +327,21 @@ async function salvarOcorrencia() {
     const btnSalvar = document.querySelector('#form-registro button[type="submit"]');
 
     try {
-        if (btnSalvar) { btnSalvar.disabled = true; btnSalvar.innerText = 'Salvando...'; }
-        await db.collection(NOME_COLECAO_REGISTROS).add({
-            ...novoRegistro,
-            criadoEm: firebase.firestore.FieldValue.serverTimestamp(),
-            criadoPor: auth.currentUser ? auth.currentUser.email : '-'
-        });
+        if (idRegistroEmEdicao) {
+            if (btnSalvar) { btnSalvar.disabled = true; btnSalvar.innerText = 'Salvando edição...'; }
+            await db.collection(NOME_COLECAO_REGISTROS).doc(idRegistroEmEdicao).update({
+                ...novoRegistro,
+                editadoEm: firebase.firestore.FieldValue.serverTimestamp(),
+                editadoPor: auth.currentUser ? auth.currentUser.email : '-'
+            });
+        } else {
+            if (btnSalvar) { btnSalvar.disabled = true; btnSalvar.innerText = 'Salvando...'; }
+            await db.collection(NOME_COLECAO_REGISTROS).add({
+                ...novoRegistro,
+                criadoEm: firebase.firestore.FieldValue.serverTimestamp(),
+                criadoPor: auth.currentUser ? auth.currentUser.email : '-'
+            });
+        }
         // Não precisa atualizar registrosCache manualmente: o listener em tempo
         // real (onSnapshot) recebe a mudança automaticamente, inclusive offline.
     } catch (erro) {
@@ -306,14 +349,60 @@ async function salvarOcorrencia() {
         alert('Falha ao salvar o registro. Verifique sua internet e tente de novo.');
         return;
     } finally {
-        if (btnSalvar) { btnSalvar.disabled = false; btnSalvar.innerText = 'Salvar Registro'; }
+        if (btnSalvar) { btnSalvar.disabled = false; }
     }
 
+    cancelarEdicao(); // limpa o modo de edição e o formulário, se estava ativo
     document.getElementById('form-registro').reset();
     document.getElementById('campo-busca').value = '';
     esconderCamposReincidencia();
     alternarCamposPorTipo();
-    alert("Salvo com sucesso!");
+    alert(idRegistroEmEdicao ? "Edição salva com sucesso!" : "Salvo com sucesso!");
+}
+
+function iniciarEdicaoRegistro(id) {
+    if (!podeEditarRegistros()) return;
+    const reg = registrosCache.find(r => r.id === id);
+    if (!reg) return;
+
+    idRegistroEmEdicao = id;
+
+    document.getElementById('tipo_registro').value = reg.tipo;
+    alternarCamposPorTipo();
+    document.getElementById('aluno_nome').value = reg.aluno;
+    document.getElementById('aluno_turma').value = reg.turma;
+    document.getElementById('aluno_matricula').value = reg.matricula === 'Não inf.' ? '' : reg.matricula;
+    document.getElementById('responsavel_telefone').value = reg.telefone || '';
+
+    if (reg.tipo === 'ATRASO') {
+        const [status, ...resto] = reg.motivo.split(' (');
+        document.getElementById('status_atraso').value = status.trim();
+        document.getElementById('justificativa_atraso').value = resto.length ? resto.join(' (').replace(/\)$/, '') : '';
+    } else if (reg.tipo === 'OCORRENCIA') {
+        document.getElementById('local_ocorrencia').value = reg.local;
+        document.getElementById('detalhe_ocorrencia').value = reg.motivo;
+        document.getElementById('funcionario_ocorrencia').value = reg.autorizado;
+    } else {
+        document.getElementById('motivo_obs').value = reg.motivo;
+        document.getElementById('autorizado_por').value = reg.autorizado === '-' ? '' : reg.autorizado;
+    }
+
+    const btnSalvar = document.querySelector('#form-registro button[type="submit"]');
+    if (btnSalvar) btnSalvar.innerText = 'Salvar Edição';
+    const avisoEdicao = document.getElementById('aviso-modo-edicao');
+    if (avisoEdicao) avisoEdicao.style.display = 'flex';
+
+    document.querySelector('.card').scrollIntoView({ behavior: 'smooth' });
+}
+
+function cancelarEdicao() {
+    idRegistroEmEdicao = null;
+    const btnSalvar = document.querySelector('#form-registro button[type="submit"]');
+    if (btnSalvar) btnSalvar.innerText = 'Salvar Registro';
+    const avisoEdicao = document.getElementById('aviso-modo-edicao');
+    if (avisoEdicao) avisoEdicao.style.display = 'none';
+    document.getElementById('form-registro').reset();
+    alternarCamposPorTipo();
 }
 
 function criarBotaoWhats(reg) {
@@ -341,12 +430,15 @@ function classeBadge(tipo) {
 function linhaTabela(reg) {
     const classe = classeBadge(reg.tipo);
     const btnWhats = criarBotaoWhats(reg);
+    const btnEditar = podeEditarRegistros()
+        ? `<br><button type="button" class="btn-editar-linha" onclick="iniciarEdicaoRegistro('${reg.id}')">✏️ Editar</button>`
+        : '';
     return `
         <tr>
             <td><strong>${escaparHTML(reg.horario)}</strong><br><span class="badge ${classe}">${escaparHTML(reg.tipo)}</span><br><small style="color:#777;">${escaparHTML(reg.data || '-')}</small></td>
             <td>${escaparHTML(reg.aluno)}</td>
             <td>${escaparHTML(reg.turma)}</td>
-            <td>${btnWhats}</td>
+            <td>${btnWhats}${btnEditar}</td>
         </tr>
     `;
 }
@@ -369,9 +461,16 @@ function atualizarTabelaTela() {
 function filtrarRegistros() {
     const termoBusca = document.getElementById('campo-busca').value.toLowerCase().trim();
     const lista = document.getElementById('lista-ocorrencias');
+    const resumo = document.getElementById('resumo-busca');
     const historico = obterHistorico();
 
     lista.innerHTML = '';
+
+    if (!termoBusca) {
+        resumo.style.display = 'none';
+        atualizarTabelaTela();
+        return;
+    }
 
     const registrosFiltrados = [...historico].reverse().filter(reg => {
         return reg.aluno.toLowerCase().includes(termoBusca) ||
@@ -381,8 +480,17 @@ function filtrarRegistros() {
 
     if (registrosFiltrados.length === 0) {
         lista.innerHTML = `<tr><td colspan="4" style="text-align:center;color:#777;">Nenhum registro encontrado.</td></tr>`;
+        resumo.style.display = 'block';
+        resumo.innerText = '🔎 Nenhum registro encontrado para essa busca.';
         return;
     }
+
+    const qtdAtraso = registrosFiltrados.filter(r => r.tipo === 'ATRASO').length;
+    const qtdSaida = registrosFiltrados.filter(r => r.tipo === 'SAÍDA').length;
+    const qtdOcorrencia = registrosFiltrados.filter(r => r.tipo === 'OCORRENCIA').length;
+
+    resumo.style.display = 'block';
+    resumo.innerText = `🔎 ${registrosFiltrados.length} registro(s) no histórico completo (ano letivo): ${qtdAtraso} atraso(s), ${qtdOcorrencia} ocorrência(s), ${qtdSaida} saída(s) antecipada(s).`;
 
     registrosFiltrados.forEach(reg => {
         lista.innerHTML += linhaTabela(reg);
@@ -423,8 +531,51 @@ function gerarPlanilhaXLSX() {
     planilha['!cols'] = [{ wch: 10 }, { wch: 8 }, { wch: 12 }, { wch: 25 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 30 }, { wch: 16 }];
     const livro = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(livro, planilha, 'Registros');
+    adicionarAbaResumoPorAluno(livro, historico);
     return livro;
 }
+
+// Aba "Resumo por Aluno": 3 tabelas lado a lado —
+// 1) contagem por aluno+data+tipo · 2) log individual · 3) total por aluno+tipo
+function adicionarAbaResumoPorAluno(livro, historico) {
+    const contagemPorDia = new Map();
+    historico.forEach(reg => {
+        const chave = `${reg.aluno}||${reg.data || '-'}||${reg.tipo}`;
+        contagemPorDia.set(chave, (contagemPorDia.get(chave) || 0) + 1);
+    });
+    const tabelaContagemDiaria = [...contagemPorDia.entries()].map(([chave, quantidade]) => {
+        const [aluno, data, tipo] = chave.split('||');
+        return { Aluno: aluno, Data: data, Tipo: tipo, Quantidade: quantidade };
+    });
+
+    const tabelaLogIndividual = historico.map(reg => ({
+        Aluno: reg.aluno,
+        Data: reg.data || '-',
+        Tipo: reg.tipo
+    }));
+
+    const totalPorTipo = new Map();
+    historico.forEach(reg => {
+        const chave = `${reg.aluno}||${reg.tipo}`;
+        totalPorTipo.set(chave, (totalPorTipo.get(chave) || 0) + 1);
+    });
+    const tabelaTotalPorAluno = [...totalPorTipo.entries()].map(([chave, total]) => {
+        const [aluno, tipo] = chave.split('||');
+        return { Aluno: aluno, Tipo: tipo, Total: total };
+    });
+
+    const planilhaResumo = XLSX.utils.aoa_to_sheet([[]]);
+    XLSX.utils.sheet_add_json(planilhaResumo, tabelaContagemDiaria, { origin: 'A1' });
+    XLSX.utils.sheet_add_json(planilhaResumo, tabelaLogIndividual, { origin: 'F1' });
+    XLSX.utils.sheet_add_json(planilhaResumo, tabelaTotalPorAluno, { origin: 'K1' });
+    planilhaResumo['!cols'] = [
+        { wch: 20 }, { wch: 12 }, { wch: 14 }, { wch: 11 }, { wch: 3 },
+        { wch: 20 }, { wch: 12 }, { wch: 14 }, { wch: 3 }, { wch: 3 },
+        { wch: 20 }, { wch: 14 }, { wch: 8 }
+    ];
+    XLSX.utils.book_append_sheet(livro, planilhaResumo, 'Resumo por Aluno');
+}
+
 
 function exportarParaXLSX() {
     const historico = obterHistorico();
