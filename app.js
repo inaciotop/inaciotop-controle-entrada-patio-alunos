@@ -23,6 +23,26 @@ db.enablePersistence({ synchronizeTabs: true }).catch((erro) => {
 const NOME_COLECAO_REGISTROS = 'registros';
 const NOME_COLECAO_USUARIOS = 'usuarios';
 
+// Remove acentos e força maiúscula — usada para AGRUPAR/COMPARAR nomes
+// (assim "João" e "Joao" contam como o mesmo aluno nos totais e na reincidência).
+function chaveNormalizada(texto) {
+    return (texto || '').toString().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+}
+
+// Só força maiúscula, mantendo acentos — usada para EXIBIR/EXPORTAR texto
+// (garante que dado antigo, salvo em minúscula, também apareça maiúsculo).
+function paraMaiuscula(texto) {
+    return (texto || '').toString().toUpperCase();
+}
+
+// Identifica um aluno de forma confiável para fins de agrupamento/relatório:
+// usa nome completo + turma (ignorando acento/maiúscula) — assim dois alunos
+// com o mesmo primeiro nome (ex: "João Silva" x "João Santos") nunca se
+// misturam, mesmo sem depender do preenchimento da matrícula.
+function chaveDoAluno(reg) {
+    return `NOME:${chaveNormalizada(reg.aluno)}||${chaveNormalizada(reg.turma)}`;
+}
+
 let registrosCache = []; // fonte única usada por toda a interface
 let unsubscribeRegistros = null;
 let papelUsuarioAtual = 'lancador'; // 'lancador' (lança e lê), 'gestor' (lança, lê e edita) ou 'leitor' (só lê)
@@ -203,8 +223,8 @@ function alternarCamposPorTipo() {
 }
 
 function verificarReincidencia() {
-    const nome = document.getElementById('aluno_nome').value.toLowerCase().trim();
-    const turma = document.getElementById('aluno_turma').value.toLowerCase().trim();
+    const nome = chaveNormalizada(document.getElementById('aluno_nome').value);
+    const turma = chaveNormalizada(document.getElementById('aluno_turma').value);
 
     const alerta = document.getElementById('alerta-reincidencia');
     const inputTelefone = document.getElementById('responsavel_telefone');
@@ -215,11 +235,14 @@ function verificarReincidencia() {
         return;
     }
 
+    const matriculaDigitada = document.getElementById('aluno_matricula').value.trim();
+    const regAtualParcial = { aluno: document.getElementById('aluno_nome').value, turma: document.getElementById('aluno_turma').value, matricula: matriculaDigitada || 'Não inf.' };
+    const chaveAtual = chaveDoAluno(regAtualParcial);
+
     const historico = obterHistorico();
 
     const ultimoRegistroComFone = [...historico].reverse().find(reg =>
-        reg.aluno.toLowerCase().trim() === nome &&
-        reg.turma.toLowerCase().trim() === turma &&
+        chaveDoAluno(reg) === chaveAtual &&
         reg.telefone
     );
     if (ultimoRegistroComFone && !inputTelefone.value) {
@@ -227,8 +250,7 @@ function verificarReincidencia() {
     }
 
     const ultimoRegistroGeral = [...historico].reverse().find(reg =>
-        reg.aluno.toLowerCase().trim() === nome &&
-        reg.turma.toLowerCase().trim() === turma
+        chaveDoAluno(reg) === chaveAtual
     );
     if (ultimoRegistroGeral && ultimoRegistroGeral.matricula && ultimoRegistroGeral.matricula !== 'Não inf.') {
         if (!document.getElementById('aluno_matricula').value) {
@@ -237,14 +259,13 @@ function verificarReincidencia() {
     }
 
     const qtdAtrasos = historico.filter(reg =>
-        reg.aluno.toLowerCase().trim() === nome &&
-        reg.turma.toLowerCase().trim() === turma &&
+        chaveDoAluno(reg) === chaveAtual &&
         reg.tipo === 'ATRASO'
     ).length;
 
     if (qtdAtrasos > 0) {
         alerta.style.display = 'block';
-        alerta.innerText = `⚠️ Aluno reincidente! Este será o ${qtdAtrasos + 1}º atraso do(a) aluno(a) na turma ${turma.toUpperCase()}.`;
+        alerta.innerText = `⚠️ Aluno reincidente! Este será o ${qtdAtrasos + 1}º atraso do(a) aluno(a) na turma ${turma}.`;
     } else {
         alerta.style.display = 'none';
     }
@@ -436,8 +457,8 @@ function linhaTabela(reg) {
     return `
         <tr>
             <td><strong>${escaparHTML(reg.horario)}</strong><br><span class="badge ${classe}">${escaparHTML(reg.tipo)}</span><br><small style="color:#777;">${escaparHTML(reg.data || '-')}</small></td>
-            <td>${escaparHTML(reg.aluno)}</td>
-            <td>${escaparHTML(reg.turma)}</td>
+            <td>${escaparHTML(paraMaiuscula(reg.aluno))}</td>
+            <td>${escaparHTML(paraMaiuscula(reg.turma))}</td>
             <td>${btnWhats}${btnEditar}</td>
         </tr>
     `;
@@ -473,9 +494,10 @@ function filtrarRegistros() {
     }
 
     const registrosFiltrados = [...historico].reverse().filter(reg => {
-        return reg.aluno.toLowerCase().includes(termoBusca) ||
-               reg.turma.toLowerCase().includes(termoBusca) ||
-               reg.matricula.toLowerCase().includes(termoBusca);
+        const termoNormalizado = chaveNormalizada(termoBusca);
+        return chaveNormalizada(reg.aluno).includes(termoNormalizado) ||
+               chaveNormalizada(reg.turma).includes(termoNormalizado) ||
+               chaveNormalizada(reg.matricula).includes(termoNormalizado);
     });
 
     if (registrosFiltrados.length === 0) {
@@ -503,7 +525,7 @@ function exportarParaCSV() {
 
     let csv = "\uFEFFDATA;HORARIO;TIPO;ALUNO;MATRICULA;TURMA;LOCAL;TELEFONE;MOTIVO;AUTORIZADO/REGISTRADO POR\r\n";
     historico.forEach(reg => {
-        csv += `"${reg.data || '-'}";"${reg.horario}";"${reg.tipo}";"${reg.aluno}";"${reg.matricula}";"${reg.turma}";"${reg.local || '-'}";"${reg.telefone}";"${reg.motivo}";"${reg.autorizado || '-'}"\r\n`;
+        csv += `"${reg.data || '-'}";"${reg.horario}";"${paraMaiuscula(reg.tipo)}";"${paraMaiuscula(reg.aluno)}";"${paraMaiuscula(reg.matricula)}";"${paraMaiuscula(reg.turma)}";"${paraMaiuscula(reg.local || '-')}";"${reg.telefone}";"${paraMaiuscula(reg.motivo)}";"${paraMaiuscula(reg.autorizado || '-')}"\r\n`;
     });
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -518,14 +540,14 @@ function gerarPlanilhaXLSX() {
     const linhas = historico.map(reg => ({
         Data: reg.data || '-',
         Horario: reg.horario,
-        Tipo: reg.tipo,
-        Aluno: reg.aluno,
-        Matricula: reg.matricula,
-        Turma: reg.turma,
-        Local: reg.local || '-',
+        Tipo: paraMaiuscula(reg.tipo),
+        Aluno: paraMaiuscula(reg.aluno),
+        Matricula: paraMaiuscula(reg.matricula),
+        Turma: paraMaiuscula(reg.turma),
+        Local: paraMaiuscula(reg.local || '-'),
         Telefone: reg.telefone,
-        Motivo: reg.motivo,
-        'Autorizado/Registrado por': reg.autorizado
+        Motivo: paraMaiuscula(reg.motivo),
+        'Autorizado/Registrado por': paraMaiuscula(reg.autorizado)
     }));
     const planilha = XLSX.utils.json_to_sheet(linhas);
     planilha['!cols'] = [{ wch: 10 }, { wch: 8 }, { wch: 12 }, { wch: 25 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 30 }, { wch: 16 }];
@@ -540,42 +562,52 @@ function gerarPlanilhaXLSX() {
 function adicionarAbaResumoPorAluno(livro, historico) {
     const contagemPorDia = new Map();
     historico.forEach(reg => {
-        const chave = `${reg.aluno}||${reg.data || '-'}||${reg.tipo}`;
-        contagemPorDia.set(chave, (contagemPorDia.get(chave) || 0) + 1);
+        const chave = `${chaveDoAluno(reg)}||${reg.data || '-'}||${reg.tipo}`;
+        if (!contagemPorDia.has(chave)) {
+            contagemPorDia.set(chave, { nome: paraMaiuscula(reg.aluno), turma: paraMaiuscula(reg.turma), data: reg.data || '-', tipo: reg.tipo, quantidade: 0 });
+        }
+        contagemPorDia.get(chave).quantidade++;
     });
-    const tabelaContagemDiaria = [...contagemPorDia.entries()].map(([chave, quantidade]) => {
-        const [aluno, data, tipo] = chave.split('||');
-        return { Aluno: aluno, Data: data, Tipo: tipo, Quantidade: quantidade };
-    });
+    const tabelaContagemDiaria = [...contagemPorDia.values()].map(item => ({
+        Aluno: item.nome, Turma: item.turma, Data: item.data, Tipo: item.tipo, Quantidade: item.quantidade
+    }));
 
     const totalPorTipo = new Map();
     historico.forEach(reg => {
-        const chave = `${reg.aluno}||${reg.tipo}`;
-        totalPorTipo.set(chave, (totalPorTipo.get(chave) || 0) + 1);
+        const chave = `${chaveDoAluno(reg)}||${reg.tipo}`;
+        if (!totalPorTipo.has(chave)) {
+            totalPorTipo.set(chave, { nome: paraMaiuscula(reg.aluno), turma: paraMaiuscula(reg.turma), tipo: reg.tipo, total: 0 });
+        }
+        totalPorTipo.get(chave).total++;
     });
-    const tabelaTotalPorAluno = [...totalPorTipo.entries()].map(([chave, total]) => {
-        const [aluno, tipo] = chave.split('||');
-        return { Aluno: aluno, Tipo: tipo, Total: total };
-    });
+    const tabelaTotalPorAluno = [...totalPorTipo.values()].map(item => ({
+        Aluno: item.nome, Turma: item.turma, Tipo: item.tipo, Total: item.total
+    }));
 
     // Total geral por aluno, somando TODOS os tipos (atraso + ocorrência + saída) —
     // responde direto "quantas vezes esse aluno apareceu no total, no ano letivo".
+    // Agrupa por matrícula (quando houver) ou nome completo+turma — nunca só pelo
+    // primeiro nome, para não misturar alunos diferentes com o mesmo nome.
     const totalGeralPorAluno = new Map();
     historico.forEach(reg => {
-        totalGeralPorAluno.set(reg.aluno, (totalGeralPorAluno.get(reg.aluno) || 0) + 1);
+        const chave = chaveDoAluno(reg);
+        if (!totalGeralPorAluno.has(chave)) {
+            totalGeralPorAluno.set(chave, { nome: paraMaiuscula(reg.aluno), turma: paraMaiuscula(reg.turma), total: 0 });
+        }
+        totalGeralPorAluno.get(chave).total++;
     });
-    const tabelaTotalGeral = [...totalGeralPorAluno.entries()]
-        .sort((a, b) => b[1] - a[1]) // do aluno com mais registros para o com menos
-        .map(([aluno, total]) => ({ Aluno: aluno, 'Total Geral (todos os tipos)': total }));
+    const tabelaTotalGeral = [...totalGeralPorAluno.values()]
+        .sort((a, b) => b.total - a.total) // do aluno com mais registros para o com menos
+        .map(item => ({ Aluno: item.nome, Turma: item.turma, 'Total Geral (todos os tipos)': item.total }));
 
     const planilhaResumo = XLSX.utils.aoa_to_sheet([[]]);
     XLSX.utils.sheet_add_json(planilhaResumo, tabelaContagemDiaria, { origin: 'A1' });
-    XLSX.utils.sheet_add_json(planilhaResumo, tabelaTotalPorAluno, { origin: 'F1' });
-    XLSX.utils.sheet_add_json(planilhaResumo, tabelaTotalGeral, { origin: 'J1' });
+    XLSX.utils.sheet_add_json(planilhaResumo, tabelaTotalPorAluno, { origin: 'G1' });
+    XLSX.utils.sheet_add_json(planilhaResumo, tabelaTotalGeral, { origin: 'L1' });
     planilhaResumo['!cols'] = [
-        { wch: 20 }, { wch: 12 }, { wch: 14 }, { wch: 11 }, { wch: 3 },
-        { wch: 20 }, { wch: 14 }, { wch: 8 }, { wch: 3 },
-        { wch: 20 }, { wch: 24 }
+        { wch: 20 }, { wch: 8 }, { wch: 12 }, { wch: 14 }, { wch: 11 }, { wch: 3 },
+        { wch: 20 }, { wch: 8 }, { wch: 14 }, { wch: 8 }, { wch: 3 },
+        { wch: 20 }, { wch: 8 }, { wch: 24 }
     ];
     XLSX.utils.book_append_sheet(livro, planilhaResumo, 'Resumo por Aluno');
 }
