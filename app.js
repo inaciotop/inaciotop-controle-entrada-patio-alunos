@@ -274,29 +274,29 @@ async function salvarOcorrencia() {
     const telefoneInput = document.getElementById('responsavel_telefone').value;
     const telefoneLimpo = telefoneInput ? telefoneInput.replace(/\D/g, '') : '';
 
-    const nomeAtual = document.getElementById('aluno_nome').value.trim();
+    const nomeAtual = document.getElementById('aluno_nome').value.trim().toUpperCase();
     const turmaAtual = document.getElementById('aluno_turma').value.trim().toUpperCase();
     const tipoReg = document.getElementById('tipo_registro').value;
 
     let motivoFinal = '';
     let localOcorrencia = '-';
-    let responsavelRegistro = document.getElementById('autorizado_por').value.trim() || '-';
+    let responsavelRegistro = document.getElementById('autorizado_por').value.trim().toUpperCase() || '-';
     if (tipoReg === 'ATRASO') {
         const status = document.getElementById('status_atraso').value;
-        const detalhe = document.getElementById('justificativa_atraso').value.trim();
+        const detalhe = document.getElementById('justificativa_atraso').value.trim().toUpperCase();
         motivoFinal = detalhe ? `${status} (${detalhe})` : status;
     } else if (tipoReg === 'OCORRENCIA') {
         localOcorrencia = document.getElementById('local_ocorrencia').value;
-        const detalhe = document.getElementById('detalhe_ocorrencia').value.trim();
+        const detalhe = document.getElementById('detalhe_ocorrencia').value.trim().toUpperCase();
         motivoFinal = detalhe || 'Ocorrência registrada';
-        const funcionario = document.getElementById('funcionario_ocorrencia').value.trim();
+        const funcionario = document.getElementById('funcionario_ocorrencia').value.trim().toUpperCase();
         if (!funcionario) {
             alert('Informe quem fez o registro da ocorrência.');
             return;
         }
         responsavelRegistro = funcionario;
     } else {
-        motivoFinal = document.getElementById('motivo_obs').value.trim() || 'Saída antecipada';
+        motivoFinal = document.getElementById('motivo_obs').value.trim().toUpperCase() || 'Saída antecipada';
     }
 
     const novoRegistro = {
@@ -304,7 +304,7 @@ async function salvarOcorrencia() {
         horario: horarioAtual,
         tipo: tipoReg,
         aluno: nomeAtual,
-        matricula: document.getElementById('aluno_matricula').value.trim() || 'Não inf.',
+        matricula: document.getElementById('aluno_matricula').value.trim().toUpperCase() || 'Não inf.',
         turma: turmaAtual,
         telefone: telefoneLimpo,
         local: localOcorrencia,
@@ -536,7 +536,7 @@ function gerarPlanilhaXLSX() {
 }
 
 // Aba "Resumo por Aluno": 3 tabelas lado a lado —
-// 1) contagem por aluno+data+tipo · 2) log individual · 3) total por aluno+tipo
+// 1) contagem por aluno+data+tipo · 2) total por aluno+tipo · 3) total geral por aluno (todos os tipos somados)
 function adicionarAbaResumoPorAluno(livro, historico) {
     const contagemPorDia = new Map();
     historico.forEach(reg => {
@@ -548,12 +548,6 @@ function adicionarAbaResumoPorAluno(livro, historico) {
         return { Aluno: aluno, Data: data, Tipo: tipo, Quantidade: quantidade };
     });
 
-    const tabelaLogIndividual = historico.map(reg => ({
-        Aluno: reg.aluno,
-        Data: reg.data || '-',
-        Tipo: reg.tipo
-    }));
-
     const totalPorTipo = new Map();
     historico.forEach(reg => {
         const chave = `${reg.aluno}||${reg.tipo}`;
@@ -564,14 +558,24 @@ function adicionarAbaResumoPorAluno(livro, historico) {
         return { Aluno: aluno, Tipo: tipo, Total: total };
     });
 
+    // Total geral por aluno, somando TODOS os tipos (atraso + ocorrência + saída) —
+    // responde direto "quantas vezes esse aluno apareceu no total, no ano letivo".
+    const totalGeralPorAluno = new Map();
+    historico.forEach(reg => {
+        totalGeralPorAluno.set(reg.aluno, (totalGeralPorAluno.get(reg.aluno) || 0) + 1);
+    });
+    const tabelaTotalGeral = [...totalGeralPorAluno.entries()]
+        .sort((a, b) => b[1] - a[1]) // do aluno com mais registros para o com menos
+        .map(([aluno, total]) => ({ Aluno: aluno, 'Total Geral (todos os tipos)': total }));
+
     const planilhaResumo = XLSX.utils.aoa_to_sheet([[]]);
     XLSX.utils.sheet_add_json(planilhaResumo, tabelaContagemDiaria, { origin: 'A1' });
-    XLSX.utils.sheet_add_json(planilhaResumo, tabelaLogIndividual, { origin: 'F1' });
-    XLSX.utils.sheet_add_json(planilhaResumo, tabelaTotalPorAluno, { origin: 'K1' });
+    XLSX.utils.sheet_add_json(planilhaResumo, tabelaTotalPorAluno, { origin: 'F1' });
+    XLSX.utils.sheet_add_json(planilhaResumo, tabelaTotalGeral, { origin: 'J1' });
     planilhaResumo['!cols'] = [
         { wch: 20 }, { wch: 12 }, { wch: 14 }, { wch: 11 }, { wch: 3 },
-        { wch: 20 }, { wch: 12 }, { wch: 14 }, { wch: 3 }, { wch: 3 },
-        { wch: 20 }, { wch: 14 }, { wch: 8 }
+        { wch: 20 }, { wch: 14 }, { wch: 8 }, { wch: 3 },
+        { wch: 20 }, { wch: 24 }
     ];
     XLSX.utils.book_append_sheet(livro, planilhaResumo, 'Resumo por Aluno');
 }
