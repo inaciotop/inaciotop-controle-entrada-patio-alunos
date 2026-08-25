@@ -107,6 +107,14 @@ function podeEditarRegistros() {
     return papelUsuarioAtual === 'gestor';
 }
 
+// Só "gestor" edita registros. A autocorreção por e-mail não funciona
+// aqui porque vários agentes compartilham o mesmo login — por isso a
+// edição fica restrita a uma conta separada, com credenciais que só a
+// gestão possui.
+function podeEditarRegistro(reg) {
+    return papelUsuarioAtual === 'gestor';
+}
+
 async function fazerLogin() {
     const email = document.getElementById('login_email').value.trim();
     const senha = document.getElementById('login_senha').value;
@@ -219,6 +227,10 @@ function alternarCamposPorTipo() {
         document.getElementById('funcionario_ocorrencia').value = '';
     }
     document.getElementById('funcionario_ocorrencia').required = tipo === 'OCORRENCIA';
+    document.getElementById('detalhe_ocorrencia').required = tipo === 'OCORRENCIA';
+    document.getElementById('justificativa_atraso').required = tipo === 'ATRASO';
+    document.getElementById('motivo_obs').required = tipo === 'SAÍDA';
+    document.getElementById('autorizado_por').required = tipo === 'SAÍDA';
     verificarReincidencia();
 }
 
@@ -301,15 +313,23 @@ async function salvarOcorrencia() {
 
     let motivoFinal = '';
     let localOcorrencia = '-';
-    let responsavelRegistro = document.getElementById('autorizado_por').value.trim().toUpperCase() || '-';
+    let responsavelRegistro = '-';
     if (tipoReg === 'ATRASO') {
         const status = document.getElementById('status_atraso').value;
         const detalhe = document.getElementById('justificativa_atraso').value.trim().toUpperCase();
-        motivoFinal = detalhe ? `${status} (${detalhe})` : status;
+        if (!detalhe) {
+            alert('Informe o motivo/detalhe do atraso antes de salvar.');
+            return;
+        }
+        motivoFinal = `${status} (${detalhe})`;
     } else if (tipoReg === 'OCORRENCIA') {
         localOcorrencia = document.getElementById('local_ocorrencia').value;
         const detalhe = document.getElementById('detalhe_ocorrencia').value.trim().toUpperCase();
-        motivoFinal = detalhe || 'Ocorrência registrada';
+        if (!detalhe) {
+            alert('Descreva a ocorrência antes de salvar.');
+            return;
+        }
+        motivoFinal = detalhe;
         const funcionario = document.getElementById('funcionario_ocorrencia').value.trim().toUpperCase();
         if (!funcionario) {
             alert('Informe quem fez o registro da ocorrência.');
@@ -317,7 +337,18 @@ async function salvarOcorrencia() {
         }
         responsavelRegistro = funcionario;
     } else {
-        motivoFinal = document.getElementById('motivo_obs').value.trim().toUpperCase() || 'Saída antecipada';
+        const motivoSaida = document.getElementById('motivo_obs').value.trim().toUpperCase();
+        const autorizadoPor = document.getElementById('autorizado_por').value.trim().toUpperCase();
+        if (!motivoSaida) {
+            alert('Informe o motivo da saída antes de salvar.');
+            return;
+        }
+        if (!autorizadoPor) {
+            alert('Informe quem autorizou a saída antes de salvar.');
+            return;
+        }
+        motivoFinal = motivoSaida;
+        responsavelRegistro = autorizadoPor;
     }
 
     const novoRegistro = {
@@ -382,9 +413,8 @@ async function salvarOcorrencia() {
 }
 
 function iniciarEdicaoRegistro(id) {
-    if (!podeEditarRegistros()) return;
     const reg = registrosCache.find(r => r.id === id);
-    if (!reg) return;
+    if (!reg || !podeEditarRegistro(reg)) return;
 
     idRegistroEmEdicao = id;
 
@@ -451,12 +481,14 @@ function classeBadge(tipo) {
 function linhaTabela(reg) {
     const classe = classeBadge(reg.tipo);
     const btnWhats = criarBotaoWhats(reg);
-    const btnEditar = podeEditarRegistros()
+    const btnEditar = podeEditarRegistro(reg)
         ? `<br><button type="button" class="btn-editar-linha" onclick="iniciarEdicaoRegistro('${reg.id}')">✏️ Editar</button>`
         : '';
+    const temLocal = reg.local && reg.local !== '-';
+    const infoLocal = temLocal ? `<br><small style="color:#176B87;">📍 ${escaparHTML(paraMaiuscula(reg.local))}</small>` : '';
     return `
         <tr>
-            <td><strong>${escaparHTML(reg.horario)}</strong><br><span class="badge ${classe}">${escaparHTML(reg.tipo)}</span><br><small style="color:#777;">${escaparHTML(reg.data || '-')}</small></td>
+            <td><strong>${escaparHTML(reg.horario)}</strong><br><span class="badge ${classe}">${escaparHTML(reg.tipo)}</span><br><small style="color:#777;">${escaparHTML(reg.data || '-')}</small>${infoLocal}</td>
             <td>${escaparHTML(paraMaiuscula(reg.aluno))}</td>
             <td>${escaparHTML(paraMaiuscula(reg.turma))}</td>
             <td>${btnWhats}${btnEditar}</td>
@@ -711,7 +743,8 @@ function iniciarListenerRegistros() {
                     local: dados.local || '-',
                     telefone: dados.telefone || '',
                     motivo: dados.motivo || '',
-                    autorizado: dados.autorizado || '-'
+                    autorizado: dados.autorizado || '-',
+                    criadoPor: dados.criadoPor || ''
                 };
             });
             atualizarTabelaTela();

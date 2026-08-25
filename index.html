@@ -125,8 +125,8 @@
                 <div class="form-group">
                     <label for="tipo_registro">Tipo de Ocorrência:</label>
                     <select id="tipo_registro" onchange="alternarCamposPorTipo()">
-                        <option value="ATRASO">Atraso (Entrada)</option>
-                        <option value="SAÍDA">Saída Antecipada</option>
+                        <option value="ATRASO">Atraso (Entrada na escola)</option>
+                        <option value="SAÍDA">Saída Antecipada da Escola</option>
                         <option value="OCORRENCIA">Ocorrência (Pátio/Corredor/Sala)</option>
                     </select>
                 </div>
@@ -157,19 +157,19 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="justificativa_atraso">Motivo / Detalhe (Opcional):</label>
-                        <input type="text" id="justificativa_atraso" placeholder="Ex: pai trouxe, ônibus, trabalho...">
+                        <label for="justificativa_atraso">Motivo / Detalhe: <span style="color:red;">*</span></label>
+                        <input type="text" id="justificativa_atraso" placeholder="Ex: pai trouxe, ônibus, trabalho..." required>
                     </div>
                 </div>
 
                 <div id="campos_saida" style="display: none;">
                     <div class="form-group">
-                        <label for="motivo_obs">Motivo da Saída / Observação (Opcional):</label>
-                        <input type="text" id="motivo_obs">
+                        <label for="motivo_obs">Motivo da Saída / Observação: <span style="color:red;">*</span></label>
+                        <input type="text" id="motivo_obs" required>
                     </div>
                     <div class="form-group">
-                        <label for="autorizado_por">Autorizado por (Opcional):</label>
-                        <input type="text" id="autorizado_por">
+                        <label for="autorizado_por">Autorizado por: <span style="color:red;">*</span></label>
+                        <input type="text" id="autorizado_por" required>
                     </div>
                 </div>
 
@@ -180,11 +180,12 @@
                             <option value="Pátio">Pátio</option>
                             <option value="Corredor">Corredor</option>
                             <option value="Sala">Sala</option>
+                            <option value="Professor">Professor</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="detalhe_ocorrencia">Descrição da Ocorrência (Opcional):</label>
-                        <input type="text" id="detalhe_ocorrencia" placeholder="Ex: briga, indisciplina, uso de celular...">
+                        <label for="detalhe_ocorrencia">Descrição da Ocorrência: <span style="color:red;">*</span></label>
+                        <input type="text" id="detalhe_ocorrencia" placeholder="Ex: briga, indisciplina, uso de celular..." required>
                     </div>
                     <div class="form-group">
                         <label for="funcionario_ocorrencia">Quem Fez o Registro (Funcionário): <span style="color:red;">*</span></label>
