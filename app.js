@@ -53,6 +53,7 @@ function obterHistorico() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    alternarCamposPorTipo(); // ajusta campos visíveis/obrigatórios já na abertura
     atualizarStatusOffline();
     registrarServiceWorker();
     configurarAutenticacao();

@@ -1,7 +1,7 @@
 // IMPORTANTE: toda vez que você editar index.html, app.js ou o CSS,
 // troque este número (v2 -> v3 -> v4...). É isso que avisa o navegador
 // que existe uma versão nova para baixar.
-const CACHE_NOME = 'secretaria-cache-v11';
+const CACHE_NOME = 'secretaria-cache-v12';
 const ARQUIVOS_ESSENCIAIS = [
     './',
     './index.html',
